@@ -11,6 +11,7 @@ from loguru import logger
 from bot_instance import bot
 from constants import POMAGATOR_CHAT_ID
 from db.database import Database
+from db.user import User
 
 THERMOMETER_MESSAGE_BASE = (
     "Привет! Это еженедельная проверка твоего самочувствия. Как твои дела? "
@@ -141,6 +142,9 @@ class ThermometerService:
         for doc in users:
             user_id = doc.get("tg_id")
             if not user_id:
+                continue
+            user = User(doc)
+            if not user.is_registration_complete():
                 continue
             settings = merge_thermometer_settings(doc.get("thermometer"))
             if not settings.get("enabled", True):

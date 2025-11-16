@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Iterable
 
 from aiogram import F, Router
@@ -473,6 +474,25 @@ async def cb_confirm_registration_final(callback: CallbackQuery, state: FSMConte
     user = User(user_data_from_state)
     user.tg_id = callback.from_user.id
     user.raw["username"] = callback.from_user.username or ""
+
+    existing_doc = Database.get().users.find_one({"tg_id": user.tg_id}) or {}
+    merged_payload = dict(existing_doc)
+    merged_payload.update(user.raw)
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    if not merged_payload.get("registration_completed_at"):
+        merged_payload["registration_completed_at"] = timestamp
+
+    thermometer_settings = merged_payload.get("thermometer")
+    if isinstance(thermometer_settings, dict):
+        thermometer_settings = dict(thermometer_settings)
+    else:
+        thermometer_settings = {}
+    if not thermometer_settings.get("last_sent_at"):
+        thermometer_settings["last_sent_at"] = timestamp
+    merged_payload["thermometer"] = thermometer_settings
+
+    user.raw = merged_payload
 
     logger.info(f"User {user.tg_id} confirmed registration. Data: {user.raw}")
     user.save_to_db()
