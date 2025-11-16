@@ -17,7 +17,7 @@ from aiogram.types import (
 from loguru import logger
 
 from bot_instance import bot
-from constants import POMAGATOR_CHAT_ID
+from config import POMAGATOR_CHAT_ID
 from states.sos import Sos
 
 router = Router()

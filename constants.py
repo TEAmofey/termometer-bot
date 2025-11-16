@@ -28,8 +28,6 @@ L_ID = 117885490
 
 ADMIN_IDS: tuple[int, ...] = (TIMOFEY_ID, L_ID)
 
-POMAGATOR_CHAT_ID: int = -1002581083454
-
 EVENTS_PAGE_SIZE = 4
 
 EVENT_TAGS: list[tuple[str, str]] = [

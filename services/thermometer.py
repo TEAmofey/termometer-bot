@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from loguru import logger
 
 from bot_instance import bot
-from constants import POMAGATOR_CHAT_ID
+from config import POMAGATOR_CHAT_ID
 from db.database import Database
 from db.user import User
 
