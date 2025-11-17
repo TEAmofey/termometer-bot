@@ -1,8 +1,7 @@
-/.DS_Store
-/.venv
-/.vscode
-/__pycache__
-/bot.log
-/config.py
-/termometer.sqlite3
-/*/__pycache__
+**/.DS_Store
+.venv
+.vscode
+bot.log
+config.py
+termometer.sqlite3
+**/__pycache__
