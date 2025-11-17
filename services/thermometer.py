@@ -9,7 +9,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from loguru import logger
 
 from bot_instance import bot
-from config import POMAGATOR_CHAT_ID
+from config import POMAGATOR_CHAT_ID, POMAGATOR_THREAD_ID
+from aiogram.enums import ParseMode
 from db.database import Database
 from db.user import User
 
@@ -207,8 +208,14 @@ async def forward_to_pomagators(payload: str) -> bool:
     if not POMAGATOR_CHAT_ID:
         logger.warning("Thermometer service: POMAGATOR_CHAT_ID is not configured.")
         return False
+    send_kwargs = dict(
+        chat_id=POMAGATOR_CHAT_ID,
+        text=payload,
+        message_thread_id=POMAGATOR_THREAD_ID,
+        parse_mode=ParseMode.HTML,
+    )
     try:
-        await bot.send_message(POMAGATOR_CHAT_ID, payload, reply_markup=None)
+        await bot.send_message(**send_kwargs)
         return True
     except Exception as exc:  # noqa: BLE001
         logger.error("Thermometer service: failed to notify pomagators: {}", exc)

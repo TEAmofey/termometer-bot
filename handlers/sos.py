@@ -88,9 +88,12 @@ async def _deliver_sos(sos_text: str, author: AiogramUser | None) -> bool:
         logger.warning("POMAGATOR_CHAT_ID is not configured; SOS message was not delivered.")
         return False
     payload = _format_sos_message(sos_text, author)
-    send_kwargs = dict(chat_id=POMAGATOR_CHAT_ID, text=payload, parse_mode=ParseMode.HTML)
-    if POMAGATOR_THREAD_ID:
-        send_kwargs["message_thread_id"] = POMAGATOR_THREAD_ID
+    send_kwargs = dict(
+        chat_id=POMAGATOR_CHAT_ID,
+        text=payload,
+        message_thread_id=POMAGATOR_THREAD_ID,
+        parse_mode=ParseMode.HTML,
+    )
     try:
         await bot.send_message(**send_kwargs)
         return True
