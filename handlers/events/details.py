@@ -44,7 +44,7 @@ def format_event_details(event: EventRecord, extra_lines: Optional[list[str]] = 
         lines.append(f"📝 {escape(event.short_description)}")
     if event.registration_link:
         lines.append("")
-        lines.append(f'<a href="{escape(event.registration_link)}">🔗 Ссылка для записи</a>')
+        lines.append(f'<a href="{escape(event.registration_link)}">🔗 Ссылка на видеозапись</a>')
     if event.contact_name and event.contact_url:
         lines.append("")
         lines.append(f'<a href="{escape(event.contact_url)}">☎️ {escape(event.contact_name)}</a>')
@@ -95,7 +95,7 @@ def build_event_keyboard(
         )
 
     if event.registration_link:
-        builder.row(InlineKeyboardButton(text="Записаться", url=event.registration_link))
+        builder.row(InlineKeyboardButton(text="Запись", url=event.registration_link))
 
     if can_manage_event(viewer_id, event):
         builder.row(
