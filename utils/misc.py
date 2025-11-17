@@ -22,7 +22,4 @@ async def update_commands_for_user(user_id: int) -> None:
         BotCommand(command="feedback", description="Отправить отзыв"),
     ]
 
-    if user_id in ADMIN_IDS:
-        commands.append(BotCommand(command="admin", description="Администрирование"))
-
     await bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=user_id))

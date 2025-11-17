@@ -251,6 +251,14 @@ class EventsRepository:
             )
         return EventRecord.from_dict(prepared)
 
+    def delete(self, event_id: int) -> bool:
+        with self._db.connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM events WHERE id = %s",
+                (event_id,),
+            )
+            return cursor.rowcount > 0
+
     def get(self, event_id: int) -> Optional[EventRecord]:
         with self._db.connection() as conn:
             cursor = conn.execute(

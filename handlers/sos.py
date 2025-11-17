@@ -17,7 +17,7 @@ from aiogram.types import (
 from loguru import logger
 
 from bot_instance import bot
-from config import POMAGATOR_CHAT_ID
+from config import POMAGATOR_CHAT_ID, POMAGATOR_THREAD_ID
 from states.sos import Sos
 
 router = Router()
@@ -88,8 +88,11 @@ async def _deliver_sos(sos_text: str, author: AiogramUser | None) -> bool:
         logger.warning("POMAGATOR_CHAT_ID is not configured; SOS message was not delivered.")
         return False
     payload = _format_sos_message(sos_text, author)
+    send_kwargs = dict(chat_id=POMAGATOR_CHAT_ID, text=payload, parse_mode=ParseMode.HTML)
+    if POMAGATOR_THREAD_ID:
+        send_kwargs["message_thread_id"] = POMAGATOR_THREAD_ID
     try:
-        await bot.send_message(POMAGATOR_CHAT_ID, payload, parse_mode=ParseMode.HTML)
+        await bot.send_message(**send_kwargs)
         return True
     except Exception as exc:
         logger.error(f"Failed to deliver SOS message to {POMAGATOR_CHAT_ID}: {exc}")

@@ -43,7 +43,12 @@ FIELD_PROMPTS = {
 }
 
 
-def _build_event_edit_keyboard(event: EventRecord, page: int, show_past: int) -> InlineKeyboardMarkup:
+def _build_event_edit_keyboard(
+    event: EventRecord,
+    page: int,
+    show_past: int,
+    user_id: int,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -77,11 +82,21 @@ def _build_event_edit_keyboard(event: EventRecord, page: int, show_past: int) ->
     builder.row(
         InlineKeyboardButton(
             text="🔗 Ссылка", callback_data=f"events:setlink:{event.id}:{page}:{show_past}"
-        ),
+        )
+    )
+    action_buttons = [
         InlineKeyboardButton(
             text="🗑 Удалить", callback_data=f"events:delete:{event.id}:{page}:{show_past}"
-        ),
-    )
+        )
+    ]
+    if user_id in ADMIN_IDS:
+        action_buttons.append(
+            InlineKeyboardButton(
+                text="✳️ На доработку",
+                callback_data=f"events:send_back:{event.id}:{page}:{show_past}",
+            )
+        )
+    builder.row(*action_buttons)
     builder.row(
         InlineKeyboardButton(
             text="👥 Участники", callback_data=f"events:participants:{event.id}:{page}:{show_past}:0"
@@ -190,7 +205,7 @@ async def _render_menu(
         event=event,
         page=page,
         show_past=show_past,
-        keyboard_override=_build_event_edit_keyboard(event, page, show_past),
+        keyboard_override=_build_event_edit_keyboard(event, page, show_past, user_id),
         extra_lines=extra_lines,
     )
 
@@ -733,7 +748,7 @@ async def cb_events_delete(callback: CallbackQuery, state: FSMContext) -> None:
     )
     try:
         await callback.message.edit_text(
-            "Отправить событие обратно на модерацию?",
+            "Удалить событие? Это действие нельзя отменить.",
             reply_markup=keyboard,
         )
     except TelegramBadRequest:
@@ -762,6 +777,88 @@ async def cb_events_delete_confirm(callback: CallbackQuery, state: FSMContext) -
         return
     if not can_manage_event(callback.from_user.id, event):
         await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    deleted = repo.delete(event_id)
+    if not deleted:
+        await callback.answer("Не удалось удалить событие.", show_alert=True)
+        return
+
+    await state.clear()
+    await edit_events_message(callback, page, bool(show_past))
+    await callback.answer("Событие удалено")
+
+
+@router.callback_query(F.data.startswith("events:send_back:"))
+async def cb_events_send_back(callback: CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        await callback.answer()
+        return
+    try:
+        event_id = int(parts[2])
+        page = int(parts[3])
+        show_past = int(parts[4])
+    except ValueError:
+        await callback.answer()
+        return
+
+    event = events_repo().get(event_id)
+    if not event:
+        await callback.answer("Событие не найдено.", show_alert=True)
+        return
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить",
+                    callback_data=f"events:send_back_confirm:{event_id}:{page}:{show_past}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменить",
+                    callback_data=f"events:edit_menu:{event_id}:{page}:{show_past}",
+                )
+            ],
+        ]
+    )
+    try:
+        await callback.message.edit_text(
+            "Отправить событие обратно на модерацию?",
+            reply_markup=keyboard,
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("events:send_back_confirm:"))
+async def cb_events_send_back_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        await callback.answer()
+        return
+    try:
+        event_id = int(parts[2])
+        page = int(parts[3])
+        show_past = int(parts[4])
+    except ValueError:
+        await callback.answer()
+        return
+
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    repo = events_repo()
+    event = repo.get(event_id)
+    if not event:
+        await callback.answer("Событие не найдено.", show_alert=True)
         return
 
     updated = repo.update(
