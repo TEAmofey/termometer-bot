@@ -1,9 +1,10 @@
 from aiogram import Router
-from . import events, feedback, registration, sos, thermometer
+from . import admin, events, feedback, registration, sos, thermometer
 
 
 def get_routers() -> list[Router]:
     return [
+        admin.router,
         events.router,
         feedback.router,
         sos.router,

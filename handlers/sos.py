@@ -224,3 +224,28 @@ async def cmd_chat_id(message: Message):
         "Скопируйте значение (оно может быть отрицательным) и укажите его в constants.POMAGATOR_CHAT_ID.",
         parse_mode=ParseMode.HTML,
     )
+
+
+@router.message(Command("threadid"))
+async def cmd_thread_id(message: Message):
+    thread_id = message.message_thread_id
+    chat_id = message.chat.id
+    logger.info(
+        "Thread ID requested in chat %s (thread %s).",
+        chat_id,
+        thread_id,
+    )
+
+    if thread_id is None:
+        await message.answer(
+            "Это сообщение не из топика (message_thread_id отсутствует).\n\n"
+            f"ID чата: <code>{chat_id}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    await message.answer(
+        f"ID этого топика: <code>{thread_id}</code>\n\n"
+        f"ID чата: <code>{chat_id}</code>",
+        parse_mode=ParseMode.HTML,
+    )
