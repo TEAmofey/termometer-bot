@@ -1,5 +1,5 @@
 from aiogram import Router
-from . import admin, events, feedback, registration, sos, thermometer
+from . import admin, events, feedback, motherlode, registration, sos, thermometer
 
 
 def get_routers() -> list[Router]:
@@ -7,6 +7,7 @@ def get_routers() -> list[Router]:
         admin.router,
         events.router,
         feedback.router,
+        motherlode.router,
         sos.router,
         thermometer.router,
         registration.router,

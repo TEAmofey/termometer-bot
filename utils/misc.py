@@ -15,6 +15,7 @@ def format_datetime(value: date) -> str:
 async def update_commands_for_user(user_id: int) -> None:
     commands = [
         BotCommand(command="sos", description="Напишите помогаторам"),
+        BotCommand(command="motherlode", description="Запросить помощь по учёбе"),
         BotCommand(command="help", description="Что умеет бот"),
         BotCommand(command="events", description="Посмотреть события"),
         BotCommand(command="profile", description="Посмотреть профиль"),
