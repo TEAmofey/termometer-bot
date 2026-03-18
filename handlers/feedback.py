@@ -4,6 +4,7 @@ from html import escape
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
+from aiogram.filters import StateFilter
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -19,8 +20,21 @@ from loguru import logger
 from bot_instance import bot
 from constants import ADMIN_IDS
 from states.feedback import Feedback
+from utils.telegram_text import (
+    TELEGRAM_TEXT_LIMIT,
+    fits_telegram_text,
+    shorten_text_for_html_preview,
+    split_text_for_html,
+)
 
 router = Router()
+PREVIEW_SUFFIX = "\n\n[Показан фрагмент. Полный текст будет отправлен администраторам целиком.]"
+
+
+def _append_text(existing_text: str | None, new_text: str) -> str:
+    if not existing_text:
+        return new_text
+    return f"{existing_text}\n\n{new_text}"
 
 
 def _feedback_keyboard(text_ready: bool) -> InlineKeyboardMarkup:
@@ -56,6 +70,7 @@ def _feedback_display_text(data: dict, status: str | None = None) -> str:
     lines: list[str] = ["📝 <b>Отзыв</b>"]
     text = data.get("feedback_text")
     if text:
+        text = shorten_text_for_html_preview(text, 2500, PREVIEW_SUFFIX)
         lines.append("")
         lines.append(escape(text))
     else:
@@ -114,15 +129,30 @@ async def _deliver_feedback(
         logger.warning("No admin IDs configured; feedback message dropped.")
         return False
 
-    payload = _format_feedback_message(
-        feedback_text,
-        is_anonymous=is_anonymous,
-        author=author,
-    )
     delivered_any = False
+    if is_anonymous:
+        header = "📣 <b>Получен анонимный отзыв</b>\n\n📝 "
+        continuation_template = "📣 <b>Получен анонимный отзыв</b> (часть {index})\n\n📝 "
+    else:
+        display_name = escape(author.full_name or "") if author else "Неизвестный пользователь"
+        username = author.username if author else ""
+        tg_id = author.id if author else 0
+        mention = f'<a href="tg://user?id={tg_id}">{display_name}</a>' if tg_id else display_name
+        author_line = f"{mention} (@{escape(username)})" if username else mention
+        header = f"📣 <b>Получен отзыв</b>\n👤 {author_line}\n\n📝 "
+        continuation_template = f"📣 <b>Получен отзыв</b> (часть {{index}})\n👤 {author_line}\n\n📝 "
+
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(admin_id, payload, parse_mode=ParseMode.HTML)
+            max_header_len = max(len(header), len(continuation_template.format(index=999)))
+            chunks = split_text_for_html(feedback_text, TELEGRAM_TEXT_LIMIT - max_header_len)
+            for index, chunk in enumerate(chunks, start=1):
+                chunk_header = header if index == 1 else continuation_template.format(index=index)
+                await bot.send_message(
+                    admin_id,
+                    f"{chunk_header}{escape(chunk)}",
+                    parse_mode=ParseMode.HTML,
+                )
             delivered_any = True
         except Exception as exc:
             logger.error(f"Failed to deliver feedback to admin {admin_id}: {exc}")
@@ -145,27 +175,30 @@ async def cmd_feedback(message: Message, state: FSMContext):
     )
 
 
-@router.message(Feedback.waiting_text)
+@router.message(StateFilter(Feedback.waiting_text, Feedback.waiting_choice))
 async def feedback_collect_text(message: Message, state: FSMContext):
     text = (message.text or "").strip()
     if not text:
         await message.answer("Кажется, сообщение пустое. Пожалуйста, отправьте текст отзыва.")
         return
 
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
-
     data = await state.get_data()
     main_message_id = data.get("main_message_id")
-    await state.update_data(feedback_text=text, feedback_mode=None)
+    combined_text = _append_text(data.get("feedback_text"), text)
+    await state.update_data(feedback_text=combined_text, feedback_mode=None)
     updated = await state.get_data()
+
+    display_text = _feedback_display_text(updated)
+    if not fits_telegram_text(display_text):
+        await message.answer(
+            "Текст слишком длинный даже для предпросмотра в боте. Сократите его или разбейте на несколько сообщений."
+        )
+        return
 
     if main_message_id:
         try:
             await bot.edit_message_text(
-                _feedback_display_text(updated),
+                display_text,
                 chat_id=message.chat.id,
                 message_id=main_message_id,
                 reply_markup=_feedback_keyboard(text_ready=True),
@@ -174,18 +207,23 @@ async def feedback_collect_text(message: Message, state: FSMContext):
         except TelegramBadRequest as exc:
             logger.warning(f"Failed to edit feedback message: {exc}")
             fallback = await message.answer(
-                _feedback_display_text(updated),
+                display_text,
                 reply_markup=_feedback_keyboard(text_ready=True),
                 parse_mode=ParseMode.HTML,
             )
             await state.update_data(main_message_id=fallback.message_id)
     else:
         fallback = await message.answer(
-            _feedback_display_text(updated),
+            display_text,
             reply_markup=_feedback_keyboard(text_ready=True),
             parse_mode=ParseMode.HTML,
         )
         await state.update_data(main_message_id=fallback.message_id)
+
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
 
     await state.set_state(Feedback.waiting_choice)
 

@@ -1,7 +1,8 @@
 **/.DS_Store
 .venv
 .vscode
-bot.log
+*.log
+*.log.zip
 config.py
 termometer.sqlite3
 **/__pycache__
