@@ -92,7 +92,9 @@ def _parse_datetime(value: str | None, tz: tzinfo) -> datetime | None:
     return dt.astimezone(tz)
 
 
-def _current_schedule_datetime(settings: Dict[str, Any], now: datetime, tz: tzinfo) -> datetime:
+def _current_schedule_datetime(
+    settings: Dict[str, Any], now: datetime, tz: tzinfo
+) -> datetime:
     weekday = int(settings.get("weekday", DEFAULT_THERMOMETER_SETTINGS["weekday"]))
     send_time = _parse_time(settings.get("time", DEFAULT_THERMOMETER_SETTINGS["time"]))
 
@@ -131,7 +133,12 @@ class ThermometerService:
         logger.info("Thermometer service: scheduler started.")
         try:
             while True:
-                await self._tick()
+                try:
+                    await self._tick()
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Thermometer service: tick failed: {}", exc)
+                    await asyncio.sleep(300)
+                    continue
                 await asyncio.sleep(60)
         except asyncio.CancelledError:
             logger.info("Thermometer service: cancelled, stopping.")
@@ -141,28 +148,37 @@ class ThermometerService:
         now = datetime.now(self.timezone)
         users = self.db.users.find()
         for doc in users:
-            user_id = doc.get("tg_id")
-            if not user_id:
-                continue
-            user = User(doc)
-            if not user.is_registration_complete():
-                continue
-            settings = merge_thermometer_settings(doc.get("thermometer"))
-            if not settings.get("enabled", True):
-                continue
+            try:
+                user_id = doc.get("tg_id")
+                if not user_id:
+                    continue
+                user = User(doc)
+                if not user.is_registration_complete():
+                    continue
+                settings = merge_thermometer_settings(doc.get("thermometer"))
+                if not settings.get("enabled", True):
+                    continue
 
-            scheduled_dt = _current_schedule_datetime(settings, now, self.timezone)
-            last_sent_at = _parse_datetime(settings.get("last_sent_at"), self.timezone)
+                scheduled_dt = _current_schedule_datetime(settings, now, self.timezone)
+                last_sent_at = _parse_datetime(
+                    settings.get("last_sent_at"), self.timezone
+                )
 
-            if last_sent_at and last_sent_at >= scheduled_dt:
-                continue
-            if now < scheduled_dt:
-                continue
+                if last_sent_at and last_sent_at >= scheduled_dt:
+                    continue
+                if now < scheduled_dt:
+                    continue
 
-            delivered = await self._send_thermometer_message(user_id)
-            if delivered:
-                settings["last_sent_at"] = now.isoformat()
-                self._store_settings(user_id, settings)
+                delivered = await self._send_thermometer_message(user_id)
+                if delivered:
+                    settings["last_sent_at"] = now.isoformat()
+                    self._store_settings(user_id, settings)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "Thermometer service: failed to process user {}: {}",
+                    doc.get("tg_id"),
+                    exc,
+                )
 
     async def _send_thermometer_message(self, tg_id: int) -> bool:
         try:
@@ -191,7 +207,9 @@ async def start_thermometer_service() -> None:
     await service.run()
 
 
-def build_pomagator_payload(user_id: int, full_name: str | None, username: str | None) -> str:
+def build_pomagator_payload(
+    user_id: int, full_name: str | None, username: str | None
+) -> str:
     display_name = full_name or "Пользователь"
     mention = f'<a href="tg://user?id={user_id}">{display_name}</a>'
     username_part = f" (@{username})" if username else ""
