@@ -38,7 +38,7 @@ from db.database import Database
 from db.user import User
 from states.registration import Registration
 from utils.misc import update_commands_for_user
-from utils.users import get_direction_track
+from utils.users import get_direction_track, education_lines, education_selection, clear_legacy_education
 
 router = Router()
 
@@ -49,19 +49,8 @@ def get_display_profile_text(data: dict, current_step_prompt: str = "") -> str:
     if name:
         parts.append(f"👤 <b>ФИО:</b> {name}")
 
-    direction = data.get("direction")
-    if direction:
-        parts.append(f"🎯 <b>Направление:</b> {direction}")
-
-    track = data.get("direction_track") or get_direction_track(direction or "")
-    graduation_value = data.get("magistracy_graduation_year")
-    if graduation_value:
-        if track == "postgraduate":
-            parts.append(
-                f"📅 <b>Год окончания магистратуры:</b> {graduation_value}"
-            )
-        else:
-            parts.append(f"🎓 <b>Курс:</b> {graduation_value}")
+    if data.get("direction"):
+        parts.extend(education_lines(data))
 
     profile_str = "\n".join(parts) if parts else ""
     if not profile_str:
@@ -148,7 +137,7 @@ async def proceed_to_graduation_step(
     if not track:
         return
 
-    await state.update_data(direction=direction, direction_track=track)
+    await state.update_data(direction=direction, direction_track=track, education=None)
     updated_data = await state.get_data()
     prompt_text = course_prompt_for_track(track)
     options = course_options_for_track(track)
@@ -464,20 +453,30 @@ async def cb_edit_from_confirm(callback: CallbackQuery, state: FSMContext):
 async def cb_confirm_registration_final(callback: CallbackQuery, state: FSMContext):
     user_data_from_state = await state.get_data()
 
+    resume_motherlode = user_data_from_state.pop("resume_motherlode", False)
+    motherlode_text = user_data_from_state.pop("motherlode_text", None)
     main_message_id = user_data_from_state.pop("main_message_id", None)
-    direction_track = user_data_from_state.pop("direction_track", None)
-
-    graduation_value = user_data_from_state.get("magistracy_graduation_year")
-    if direction_track != "postgraduate" and graduation_value:
-        user_data_from_state["magistracy_graduation_year"] = str(graduation_value)
+    user_data_from_state.pop("direction_track", None)
 
     user = User(user_data_from_state)
     user.tg_id = callback.from_user.id
     user.raw["username"] = callback.from_user.username or ""
+    if not user.is_registration_complete():
+        await callback.answer("Заполните имя, направление и курс перед подтверждением анкеты.", show_alert=True)
+        return
+
 
     existing_doc = Database.get().users.find_one({"tg_id": user.tg_id}) or {}
     merged_payload = dict(existing_doc)
     merged_payload.update(user.raw)
+    # Preserve a known graduation year when a graduate re-confirms the same stage.
+    old_user = User(existing_doc)
+    new_education = merged_payload.get("education") or {}
+    if (new_education.get("graduated") and old_user.get_education_status() == "graduate"
+            and old_user.get_education_stage() == new_education.get("stage")
+            and old_user.get_graduation_year() is not None):
+        merged_payload["education"] = dict(existing_doc["education"])
+    merged_payload = clear_legacy_education(merged_payload)
 
     timestamp = datetime.now(timezone.utc).isoformat()
     if not merged_payload.get("registration_completed_at"):
@@ -498,6 +497,11 @@ async def cb_confirm_registration_final(callback: CallbackQuery, state: FSMConte
     user.save_to_db()
 
     await callback.answer("Ваши данные сохранены!", show_alert=True)
+
+    if resume_motherlode:
+        from handlers.motherlode import open_motherlode
+        await open_motherlode(callback.message, state, motherlode_text)
+        return
 
     help_text = HELP_MESSAGE
     help_message_sent = False
@@ -594,7 +598,9 @@ async def process_graduation(message: Message, state: FSMContext):
 
     raw_value = (message.text or "").strip()
     stored_value: str | None = None
-    if track == "postgraduate":
+    if track in ("bachelor", "master") and raw_value.casefold() == "выпускник":
+        stored_value = "Выпускник"
+    elif track == "postgraduate":
         stored_value = extract_graduation_year(raw_value)
     elif track == "bachelor":
         stored_value = extract_course_number(raw_value, range(1, 5))
@@ -618,7 +624,7 @@ async def process_graduation(message: Message, state: FSMContext):
         )
         return
 
-    await state.update_data(magistracy_graduation_year=stored_value)
+    await state.update_data(**education_selection(stored_value, track))
     await show_confirmation(message.chat.id, main_message_id, state)
 
 
@@ -644,7 +650,9 @@ async def cb_graduation_select(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Не удалось распознать выбор.", show_alert=True)
         return
 
-    if track == "bachelor":
+    if selected == "Выпускник" and track in ("bachelor", "master"):
+        stored_value = selected
+    elif track == "bachelor":
         stored_value = extract_course_number(selected, range(1, 5))
     elif track == "master":
         stored_value = extract_course_number(selected, range(1, 3))
@@ -654,7 +662,7 @@ async def cb_graduation_select(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Неверный выбор, попробуйте снова.", show_alert=True)
         return
 
-    await state.update_data(magistracy_graduation_year=stored_value)
+    await state.update_data(**education_selection(stored_value, track))
     await show_confirmation(callback.message.chat.id, main_message_id, state)
     await callback.answer(f"Выбран {selected}")
 
@@ -684,12 +692,12 @@ async def cb_previous_step(callback: CallbackQuery, state: FSMContext):
     elif current_state == Registration.graduation.state:
         user_data.pop("direction", None)
         user_data.pop("direction_track", None)
-        user_data.pop("magistracy_graduation_year", None)
+        user_data.pop("education", None)
         prompt_text = REG_MESSAGES_NEW["direction"]
         keyboard = build_direction_keyboard()
         new_state = Registration.direction
     elif current_state == Registration.confirm.state:
-        user_data.pop("magistracy_graduation_year", None)
+        user_data.pop("education", None)
         track = user_data.get("direction_track")
         if not track:
             await callback.answer("Не удалось определить предыдущий шаг.", show_alert=True)

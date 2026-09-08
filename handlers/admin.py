@@ -13,6 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from constants import ADMIN_IDS, BACK, NEXT, PREVIOUS, RELOAD
 from db.database import Database
 from db.user import User
+from utils.users import education_lines
 from handlers.events.common import PARTICIPANTS_PER_PAGE, number_to_emoji
 
 router = Router()
@@ -141,12 +142,7 @@ def _render_user_details(user: User) -> str:
     username = user.get_username()
     if username:
         lines.append(f"📨 @{escape(username)}")
-    direction = user.get_direction()
-    if direction:
-        lines.append(f"🎯 Направление: {escape(direction)}")
-    course = user.get_magistracy_graduation_year()
-    if course:
-        lines.append(f"🎓 Курс/год: {escape(str(course))}")
+    lines.extend(education_lines(user.raw))
     registered_at = user.raw.get("registration_completed_at")
     if registered_at:
         try:

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from db.database import Database
+from utils.users import education_course, education_status, education_stage, get_direction_track
 
 
 @dataclass
@@ -28,8 +29,17 @@ class User:
     def get_direction(self) -> str:
         return self.raw.get("direction", "")
 
-    def get_magistracy_graduation_year(self) -> str:
-        return self.raw.get("magistracy_graduation_year", "")
+    def get_graduation_year(self) -> Optional[int]:
+        return (self.raw.get("education") or {}).get("graduation_year")
+
+    def get_course(self) -> Optional[int]:
+        return education_course(self.raw)
+
+    def get_education_status(self) -> Optional[str]:
+        return education_status(self.raw)
+
+    def get_education_stage(self) -> Optional[str]:
+        return education_stage(self.raw)
 
     def get_username(self) -> str:
         return self.raw.get("username", "")
@@ -37,8 +47,9 @@ class User:
     def is_registration_complete(self) -> bool:
         return bool(
             self.get_name()
-            and self.get_direction()
-            and self.get_magistracy_graduation_year()
+            and get_direction_track(self.get_direction())
+            and get_direction_track(self.get_direction()) == self.get_education_stage()
+            and self.get_education_status()
         )
 
     def save_to_db(self) -> Dict[str, Any]:

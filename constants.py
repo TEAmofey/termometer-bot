@@ -42,8 +42,8 @@ EVENT_TAGS: list[tuple[str, str]] = [
 REG_MESSAGES_NEW = {
     "name": "Введите, пожалуйста, ваше полное ФИО.",
     "direction": "Выберите образовательное направление.",
-    "graduation_bachelor": "Укажите текущий курс обучения (1–4).",
-    "graduation_master": "Укажите текущий курс магистратуры (1–2).",
+    "graduation_bachelor": "Укажите текущий курс обучения (1–4) или выберите «Выпускник».",
+    "graduation_master": "Укажите текущий курс магистратуры (1–2) или выберите «Выпускник».",
     "graduation_postgraduate": "Введите год окончания магистратуры (например, 2024).",
     "confirm": "Проверьте введённые данные. Всё верно?",
 }
@@ -64,8 +64,8 @@ POSTGRADUATE_DIRECTION = "Аспирантура"
 
 DIRECTION_OPTIONS = BACHELOR_DIRECTIONS + MASTER_DIRECTIONS + [POSTGRADUATE_DIRECTION]
 
-GRADUATION_BACHELOR_OPTIONS = ["Курс 1", "Курс 2", "Курс 3", "Курс 4"]
-GRADUATION_MASTER_OPTIONS = ["Курс 1", "Курс 2"]
+GRADUATION_BACHELOR_OPTIONS = ["Курс 1", "Курс 2", "Курс 3", "Курс 4", "Выпускник"]
+GRADUATION_MASTER_OPTIONS = ["Курс 1", "Курс 2", "Выпускник"]
 
 RELOAD = "↺"
 NEXT = "→"

@@ -19,6 +19,8 @@ from loguru import logger
 
 from bot_instance import bot
 from config import MOTHERLODE_CHAT_ID
+from db.user import User
+from utils.users import education_lines
 from states.motherlode import Motherlode
 from utils.telegram_text import (
     TELEGRAM_TEXT_LIMIT,
@@ -81,8 +83,7 @@ def _motherlode_display_text(data: dict, status: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def _format_motherlode_message(text: str, author: AiogramUser | None) -> str:
-    escaped_text = escape(text)
+def _motherlode_header(author: AiogramUser | None) -> str:
     if author:
         display_name = escape(author.full_name or "")
         tg_id = author.id
@@ -96,35 +97,30 @@ def _format_motherlode_message(text: str, author: AiogramUser | None) -> str:
         header = f"📚 <b>Учебный запрос</b>\n👤 {author_line}"
     else:
         header = "📚 <b>Учебный запрос</b>\n👤 Неизвестный пользователь"
-    body = f"\n\n📝 {escaped_text}"
-    return f"{header}{body}"
+    user = User.get_by_tg_id(author.id) if author else None
+    if not user or not user.is_registration_complete():
+        raise ValueError("A complete profile is required for a study request")
+    header += "\n" + "\n".join(education_lines(user.raw if user else {}))
+    return header
+
+
+def _format_motherlode_message(text: str, author: AiogramUser | None) -> str:
+    return f"{_motherlode_header(author)}\n\n📝 {escape(text)}"
 
 
 async def _deliver_motherlode(text: str, author: AiogramUser | None) -> bool:
     if not MOTHERLODE_CHAT_ID:
         logger.warning("MOTHERLODE_CHAT_ID is not configured; message was not delivered.")
         return False
-    if author:
-        display_name = escape(author.full_name or "")
-        tg_id = author.id
-        username = author.username or ""
-        mention = f'<a href="tg://user?id={tg_id}">{display_name}</a>' if display_name else ""
-        if not mention:
-            mention = f'<a href="tg://user?id={tg_id}">Пользователь</a>'
-        author_line = mention
-        if username:
-            author_line += f" (@{escape(username)})"
-        header = f"📚 <b>Учебный запрос</b>\n👤 {author_line}\n\n📝 "
-        continuation_template = f"📚 <b>Учебный запрос</b> (часть {{index}})\n👤 {author_line}\n\n📝 "
-    else:
-        header = "📚 <b>Учебный запрос</b>\n👤 Неизвестный пользователь\n\n📝 "
-        continuation_template = "📚 <b>Учебный запрос</b> (часть {index})\n👤 Неизвестный пользователь\n\n📝 "
-
     try:
-        max_header_len = max(len(header), len(continuation_template.format(index=999)))
+        header = f"{_motherlode_header(author)}\n\n📝 "
+        continuation_header = header.replace(
+            "<b>Учебный запрос</b>", "<b>Учебный запрос</b> (часть {index})", 1
+        )
+        max_header_len = max(len(header), len(continuation_header.replace("{index}", "999", 1)))
         chunks = split_text_for_html(text, TELEGRAM_TEXT_LIMIT - max_header_len)
         for index, chunk in enumerate(chunks, start=1):
-            chunk_header = header if index == 1 else continuation_template.format(index=index)
+            chunk_header = header if index == 1 else continuation_header.replace("{index}", str(index), 1)
             await bot.send_message(
                 chat_id=MOTHERLODE_CHAT_ID,
                 text=f"{chunk_header}{escape(chunk)}",
@@ -136,19 +132,42 @@ async def _deliver_motherlode(text: str, author: AiogramUser | None) -> bool:
         return False
 
 
+async def _require_registration(event: Message | CallbackQuery, state: FSMContext, author: AiogramUser | None) -> bool:
+    user = User.get_by_tg_id(author.id) if author else None
+    if user and user.is_registration_complete():
+        return False
+    from handlers.registration import start_new_registration_flow
+
+    data = await state.get_data()
+    message = event if isinstance(event, Message) else event.message
+    await message.answer(
+        "Перед отправкой учебного запроса нужно заполнить анкету: имя, направление и курс "
+        "(для выпускников — статус, для аспирантов — год окончания магистратуры). "
+        "После регистрации вернёмся к вашему запросу."
+    )
+    await start_new_registration_flow(event, state, existing_data={
+        "resume_motherlode": True,
+        "motherlode_text": data.get("motherlode_text"),
+    })
+    return True
+
+
+async def open_motherlode(message: Message, state: FSMContext, text: str | None = None):
+    await state.clear()
+    await state.set_state(Motherlode.waiting_confirmation if text else Motherlode.waiting_text)
+    main_msg = await message.answer(
+        _motherlode_display_text({"motherlode_text": text}),
+        parse_mode=ParseMode.HTML,
+        reply_markup=_motherlode_keyboard(text_ready=bool(text)),
+    )
+    await state.update_data(main_message_id=main_msg.message_id, motherlode_text=text)
+
+
 @router.message(Command("motherlode"))
 async def cmd_motherlode(message: Message, state: FSMContext):
-    await state.clear()
-    await state.set_state(Motherlode.waiting_text)
-    main_msg = await message.answer(
-        _motherlode_display_text({}),
-        parse_mode=ParseMode.HTML,
-        reply_markup=_motherlode_keyboard(text_ready=False),
-    )
-    await state.update_data(
-        main_message_id=main_msg.message_id,
-        motherlode_text=None,
-    )
+    if await _require_registration(message, state, message.from_user):
+        return
+    await open_motherlode(message, state)
 
 
 @router.message(StateFilter(Motherlode.waiting_text, Motherlode.waiting_confirmation))
@@ -213,6 +232,9 @@ async def cb_motherlode_send(callback: CallbackQuery, state: FSMContext):
     if not motherlode_text:
         await callback.answer("Не найден текст сообщения. Начните заново командой /motherlode.", show_alert=True)
         await state.clear()
+        return
+
+    if await _require_registration(callback, state, callback.from_user):
         return
 
     delivered = await _deliver_motherlode(motherlode_text, callback.from_user)

@@ -7,7 +7,6 @@ from constants import ADMIN_IDS, EVENT_TAGS
 from db.base_event import EventRecord, EventsRepository, STATUS_APPROVED
 from db.database import Database
 from db.user import User
-from utils.users import get_direction_track
 
 TAG_TITLE_BY_SLUG = {slug: title for slug, title in EVENT_TAGS}
 LEGACY_TAG_ALL = "all"
@@ -31,7 +30,7 @@ def load_user(tg_id: int) -> Optional[User]:
 def user_track(user: Optional[User]) -> Optional[str]:
     if not user:
         return None
-    return user.raw.get("direction_track") or get_direction_track(user.get_direction())
+    return user.get_education_stage()
 
 
 def event_visible_for_user(event: EventRecord, user: Optional[User]) -> bool:

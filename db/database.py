@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover - config is always present in production
     POSTGRES_SCHEMA = "public"
 
 from db.base_event import EventsRepository
+from utils.users import clear_legacy_education
 
 
 def _utcnow_iso() -> str:
@@ -125,6 +126,8 @@ class UsersRepository:
         if "tg_id" not in doc:
             raise ValueError("User document must contain 'tg_id'.")
 
+        if "education" in doc:
+            doc = clear_legacy_education(doc)
         prepared = self._ensure_created_updated(doc)
         tg_id = prepared["tg_id"]
         payload = self._serialize(prepared)
