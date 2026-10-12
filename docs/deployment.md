@@ -41,3 +41,5 @@ env PM2_HOME=/home/mofeytea/.pm2 pm2 logs thermometer --lines 30 --nostream
 ## Доступ к Telegram на новом сервере
 
 При развёртывании 12 октября 2026 года адрес `api.telegram.org`, полученный через DNS (`149.154.166.110`), не отвечал с нового сервера. Проверен HTTPS-доступ к Telegram через `149.154.167.220` с сохранением имени хоста и проверки TLS. В `/etc/hosts` добавлено сопоставление `149.154.167.220 api.telegram.org`; исходный файл сохранён в `/etc/hosts.before-thermometer`. Это настройка сети сервера. Если Telegram снова недоступен, проверить актуальную доступность адреса и DNS.
+
+При проверке PostgreSQL с нового сервера узел `rc1d-lpvgh1el3oggl6km.mdb.yandexcloud.net` доступен и принимает запись, а соединение с `rc1a-09d5jf0pau2qjdes.mdb.yandexcloud.net` истекает по таймауту. В приватном `config.py` доступный узел поставлен первым и задан `connect_timeout = 5`; `target_session_attrs = read-write` сохранён.
