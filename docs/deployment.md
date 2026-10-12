@@ -4,13 +4,15 @@
 
 ## Сервер
 
-- Подключение: `ssh -l mofeytea 130.193.55.169`.
+- Подключение: `ssh -l mofeytea 81.26.178.232`.
 - Приложение: `/home/mofeytea/termometer-bot`.
 - Репозиторий: `https://github.com/TEAmofey/termometer-bot.git`.
 - Python: `/home/mofeytea/termometer-bot/venv/bin/python`.
 - PM2: процесс `thermometer`, каталог `/home/mofeytea/.pm2`.
 
-При проверке 7 сентября 2026 года SSH-пользователь не имел прямого доступа к домашнему каталогу из-за несовпадения UID, но имел `sudo -n`. Если ситуация сохраняется, использовать `sudo -n` для нужных команд. Не менять владельцев и права каталогов ради развёртывания.
+С 12 октября 2026 года используется новый сервер `81.26.178.232`. Пользователь `mofeytea` имеет доступ к своему домашнему каталогу и `sudo -n`. Приложение и PM2 запускаются от `mofeytea`; sudo нужен для системных пакетов и настройки автозапуска.
+
+База PostgreSQL размещена отдельно в Yandex Cloud. Перенос приложения не требует создания новой базы: подключение задаётся в исключённом из Git `config.py`. На новом сервере нужно проверить доступ к существующей базе. Значения токена и настроек чатов также хранятся только в `config.py`.
 
 ## Порядок обновления
 
@@ -25,9 +27,9 @@
 Команды управления существующим PM2:
 
 ```sh
-sudo -n env PM2_HOME=/home/mofeytea/.pm2 pm2 stop thermometer
-sudo -n env PM2_HOME=/home/mofeytea/.pm2 pm2 restart thermometer
-sudo -n env PM2_HOME=/home/mofeytea/.pm2 pm2 logs thermometer --lines 30 --nostream
+env PM2_HOME=/home/mofeytea/.pm2 pm2 stop thermometer
+env PM2_HOME=/home/mofeytea/.pm2 pm2 restart thermometer
+env PM2_HOME=/home/mofeytea/.pm2 pm2 logs thermometer --lines 30 --nostream
 ```
 
 Не перезапускать остальные приложения PM2. Не запускать отдельный экземпляр бота рядом с существующим процессом.
